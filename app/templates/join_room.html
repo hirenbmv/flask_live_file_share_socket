@@ -1,0 +1,208 @@
+{% extends "index.html" %}
+
+{% block title %} File Share {% endblock %}
+
+
+{% block body %}
+
+<!-- Dropzone URLs -->
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/dropzone/5.4.0/min/dropzone.min.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/dropzone/5.4.0/min/basic.min.css" />
+<script type="application/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/dropzone/5.4.0/min/dropzone.min.js">
+</script>
+<!-- Dropzone URLs end -->
+
+<br>
+
+<form method="POST" action='/upload' class="dropzone dz-clickable" id="dropper" enctype="multipart/form-data">
+  <input type="hidden" name="room_id" value="{{room_id}}" />
+  <input type="hidden" id="socket_id" name="socket_id"/>
+</form>
+
+<hr>
+
+<h4>Share this room ID</h4>
+
+<!-- The text field -->
+<input type="text" value="{{room_id}}" id="room_id">
+
+<!-- The button used to copy the text -->
+<button class="btn btn-primary btn-sm"  onclick="copy_text()">Copy</button>
+
+<button class="btn btn-danger btn-sm"  onclick="leave_room()">Leave this room</button>
+<hr>
+<div class="progress" role="progressbar" aria-label="File Transfer Progress" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+  <div class="progress-bar" style="width: 0%;">0%</div>
+</div>
+<br>
+<div class="container d-flex justify-content-center align-items-center">
+<textarea id="chat" cols="50" rows="10" readonly></textarea><br><br>
+</div>
+
+    <script type="text/javascript" src="https://code.jquery.com/jquery-1.4.2.min.js"></script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" integrity="sha384-2huaZvOR9iDzHqslqwpR87isEmrfxqyWOF7hr7BY6KG0+hVKLoEXMPUJw3ynWuhO" crossorigin="anonymous"></script>
+<script type="text/javascript" charset="utf-8">
+    var socket;
+    var joinedRoom = false;
+        $(document).ready(function () {
+          socket = io.connect();
+    
+      socket.on('connect', function () {
+        console.log('Socket connected');
+        if (!joinedRoom) {
+            socket.emit('join_room', {room_id: `{{room_id}}`});
+            joinedRoom = true;
+        }
+    });
+
+      socket.on("status", (data) => {
+      const socket_id_inputField = document.getElementById("socket_id");
+      socket_id_inputField.value = data.socket_id;
+      document.getElementById("name")
+      $('#chat').val($('#chat').val() + '<' + data.socket_id + '>' + data.message + '\n');
+      $('#chat').scrollTop($('#chat')[0].scrollHeight);
+  });
+
+      socket.on("file_complete", (data) => {
+    //  console.log(data.data.message)
+      Swal.fire({
+      position: "center",
+      icon: "success",
+      title: data.data.message,
+      animation: true,
+      showConfirmButton: false,
+      timer: 3000,
+      timerProgressBar: true,
+    });
+  });
+
+
+
+  const progressBar = document.querySelector(".progress-bar"); // Select the progress bar
+
+  socket.on("progress_bar_status", (data) => {
+    console.log("Received Data:", data);
+    
+    // Convert to numbers
+    const receivedChunksLength = parseInt(data.data.receivedChunks_length, 10);
+    const totalChunks = parseInt(data.data.total_chunks, 10);
+
+    // Validate numeric data
+    if (isNaN(receivedChunksLength) || isNaN(totalChunks) || totalChunks === 0) {
+        console.error("Invalid numeric data:", { receivedChunksLength, totalChunks });
+        return; // Exit if invalid
+    }
+
+    // Calculate and update progress
+    const progressPercentage = Math.round((receivedChunksLength / totalChunks) * 100);
+    progressBar.style.width = `${progressPercentage}%`;
+    progressBar.textContent = `${progressPercentage}%`;
+
+    // Log progress for debugging
+    console.log(`Progress: ${progressPercentage}%`);
+
+    // Optionally handle completion
+    if (progressPercentage === 100) {
+              // Reset progress bar
+        progressBar.style.width = "0%";
+        progressBar.textContent = "0%";
+        console.log("File transfer complete!");
+    }
+
+   
+});
+
+
+
+
+
+  let receivedChunks = []; // Store the received chunks
+
+socket.on("receive_chunks", function (data) {
+    const { chunk, chunkbyteoffset, chunk_index, filename, total_chunks } = data;
+
+    // Convert chunk (binary) to Uint8Array (if needed)
+    const byteArray = new Uint8Array(chunk);
+
+    // Append the chunk to the file buffer (receivedChunks array)
+    receivedChunks.push(byteArray);
+
+    socket.emit('progress_bar', {room_id: `{{room_id}}`,'receivedChunks_length':receivedChunks.length,'total_chunks':total_chunks});
+
+    // Check if all chunks are received
+    if (receivedChunks.length === total_chunks) {
+        console.log("All chunks received. Reconstructing file.");
+
+        // Concatenate all the chunks to create the full file
+        const fileBlob = new Blob(receivedChunks, { type: "application/octet-stream" });
+
+        // Trigger file download
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(fileBlob);
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        console.log("File download completed.");
+        socket.emit('file_complete', {room_id: `{{room_id}}`,'message':'Process Completed! Happy Sharing.','filename':filename});
+
+        // Clear receivedChunks for future use
+        receivedChunks = [];
+    }
+});
+
+   
+  });
+    </script>
+
+    <script>
+      function leave_room() {
+            socket.emit('leave_room', {room_id: `{{room_id}}`}, function () {
+                socket.disconnect();
+
+                // go back to the login page
+                window.location.href = "{{ url_for('views_blueprint.index') }}";
+            });
+        }
+    </script>
+  
+  
+  <!-- Dropzone JS -->
+
+  <script type="application/javascript">
+    Dropzone.options.dropper = {
+      dictDefaultMessage: "Drop files here or click to upload",
+        paramName: 'file',
+        chunking: true,
+        forceChunking: true,
+        url: '/upload',
+        retryChunks: true,
+        // parallelChunkUploads: true,
+        timeout: 120000, // microseconds
+        maxFilesize: 100000000000, //100 Mb File limit
+        chunkSize: 5000000, // 5 MB
+    }
+</script>
+
+<script>
+    
+
+    function copy_text() {
+    var copyText = document.getElementById("room_id");
+    copyText.select();
+    copyText.setSelectionRange(0, 99999);
+    navigator.clipboard
+      .writeText(copyText.value)
+      .then(() => {
+        alert("successfully copied");
+      })
+      .catch(() => {
+        alert("something went wrong");
+      });
+}
+
+    </script>
+
+{% endblock %}

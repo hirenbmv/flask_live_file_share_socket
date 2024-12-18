@@ -1,0 +1,9 @@
+*venv
+*myenv
+*.env
+__pycache__
+*.pyc
+*.vscode
+*__pycache__
+*app/uploads
+*.zip
