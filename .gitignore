@@ -8,4 +8,4 @@ __pycache__
 *app/uploads
 *.zip
 *.db
-*instance/
+instance/
