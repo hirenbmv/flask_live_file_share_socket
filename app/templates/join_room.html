@@ -67,88 +67,87 @@
       socket.on("file_complete", (data) => {
     //  console.log(data.data.message)
       Swal.fire({
-      position: "center",
+      toast: true,
+      position: "top-start",
       icon: "success",
       title: data.data.message,
       animation: true,
       showConfirmButton: false,
       timer: 3000,
       timerProgressBar: true,
+      didOpen: (toast) => {
+      toast.onmouseenter = Swal.stopTimer;
+      toast.onmouseleave = Swal.resumeTimer;
+    }
     });
   });
 
 
 
-  const progressBar = document.querySelector(".progress-bar"); // Select the progress bar
+const progressBar = document.querySelector(".progress-bar");
+let receivedChunks = [];
 
-  socket.on("progress_bar_status", (data) => {
-    console.log("Received Data:", data);
-    
-    // Convert to numbers
+// Handle progress bar updates
+socket.on("progress_bar_status", (data) => {
     const receivedChunksLength = parseInt(data.data.receivedChunks_length, 10);
     const totalChunks = parseInt(data.data.total_chunks, 10);
 
-    // Validate numeric data
     if (isNaN(receivedChunksLength) || isNaN(totalChunks) || totalChunks === 0) {
         console.error("Invalid numeric data:", { receivedChunksLength, totalChunks });
-        return; // Exit if invalid
+        return;
     }
 
-    // Calculate and update progress
     const progressPercentage = Math.round((receivedChunksLength / totalChunks) * 100);
     progressBar.style.width = `${progressPercentage}%`;
     progressBar.textContent = `${progressPercentage}%`;
 
-    // Log progress for debugging
-    console.log(`Progress: ${progressPercentage}%`);
-
-    // Optionally handle completion
     if (progressPercentage === 100) {
-              // Reset progress bar
-        progressBar.style.width = "0%";
-        progressBar.textContent = "0%";
+        setTimeout(() => {
+            progressBar.style.width = "0%";
+            progressBar.textContent = "0%";
+        }, 2000);
         console.log("File transfer complete!");
     }
-
-   
 });
 
-
-
-
-
-  let receivedChunks = []; // Store the received chunks
-
-socket.on("receive_chunks", function (data) {
+// Handle chunk reception
+socket.on("receive_chunks", (data) => {
     const { chunk, chunkbyteoffset, chunk_index, filename, total_chunks } = data;
 
-    // Convert chunk (binary) to Uint8Array (if needed)
+    if (!data || !chunk || chunk_index === undefined || total_chunks === undefined) {
+        console.error("Invalid data received:", data);
+        return;
+    }
+
     const byteArray = new Uint8Array(chunk);
 
-    // Append the chunk to the file buffer (receivedChunks array)
-    receivedChunks.push(byteArray);
+    // Validate and store chunk
+    if (!receivedChunks[chunk_index]) {
+        receivedChunks[chunk_index] = byteArray;
+    } else {
+        console.warn(`Duplicate or out-of-order chunk received: index ${chunk_index}`);
+    }
 
-    socket.emit('progress_bar', {room_id: `{{room_id}}`,'receivedChunks_length':receivedChunks.length,'total_chunks':total_chunks});
+    // Update progress
+    socket.emit('progress_bar', { room_id: `{{room_id}}`, receivedChunks_length: receivedChunks.filter(c => c).length, total_chunks });
 
     // Check if all chunks are received
-    if (receivedChunks.length === total_chunks) {
-        console.log("All chunks received. Reconstructing file.");
-
-        // Concatenate all the chunks to create the full file
+    if (receivedChunks.filter(c => c).length === total_chunks && !receivedChunks.includes(undefined)) {
+        console.log("All chunks received and validated. Reconstructing file.");
         const fileBlob = new Blob(receivedChunks, { type: "application/octet-stream" });
 
-        // Trigger file download
         const link = document.createElement("a");
-        link.href = URL.createObjectURL(fileBlob);
+        const fileURL = URL.createObjectURL(fileBlob);
+        link.href = fileURL;
         link.download = filename;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        URL.revokeObjectURL(fileURL);
 
         console.log("File download completed.");
-        socket.emit('file_complete', {room_id: `{{room_id}}`,'message':'Process Completed! Happy Sharing.','filename':filename});
+        socket.emit('file_complete', { room_id: `{{room_id}}`, message: 'Process Completed! Happy Sharing.', filename });
 
-        // Clear receivedChunks for future use
         receivedChunks = [];
     }
 });
