@@ -1,6 +1,7 @@
-from app import socketio
+from app import socketio,db
 from flask_socketio import emit,join_room,rooms,leave_room,send
 from flask import request,flash
+from app.models.models import Room
 
 @socketio.on("join_room")
 def join(data):
@@ -14,6 +15,13 @@ def leave(data):
     room = data.get('room_id')
     if room:
         leave_room(room)
+        connected_users = list(socketio.server.manager.get_participants(namespace='/', room=room))
+        if not connected_users:
+            
+            delete_room = Room.query.filter(Room.room_id==room).first()
+            db.session.delete(delete_room)
+            db.session.commit()
+
         emit("status", {"message": f" Has left room","socket_id":request.sid},to=room)
 
 @socketio.on("progress_bar")

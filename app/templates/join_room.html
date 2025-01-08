@@ -152,6 +152,18 @@ socket.on("receive_chunks", (data) => {
     }
 });
 
+// Handle tab/window close
+window.addEventListener('beforeunload', (event) => {
+  console.log('Tab is closing, disconnecting WebSocket...');
+  
+  // Emit a message to notify the server about leaving the room
+  socket.emit('leave_room', {room_id: `{{room_id}}`}, function () {
+    // Disconnect the socket after the server has processed the leave_room event
+    socket.disconnect();
+  });
+});
+
+
    
   });
     </script>
