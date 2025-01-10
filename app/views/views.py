@@ -97,7 +97,7 @@ def upload():
         encoded_file = file_to_base64(file)
         # Assume this file has not been chunked
         print('Sending Full File')
-        socketio.emit('receive_chunks', {'full_file': encoded_file,'filename':file.filename}, to=room,skip_sid=socket_id)
+        socketio.emit('receive_chunks', {'full_file': encoded_file,'filename':file.filename}, to=room,skip_sid=socket_id,include_self=False)
         # with open(storage_path / f"{uuid.uuid4()}_{secure_filename(file.filename)}", "wb") as f:
         #     print(f"Emitting to room: {room}")
         #     file.save(f)
